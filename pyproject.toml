@@ -1,0 +1,27 @@
+[tool.poetry]
+name = "espeak-phonemizer-windows"
+version = "1.0.1"
+description = "Uses espeak-ng to transform text into IPA phonemes."
+authors = ["mush42 <ibnomer2011@hotmail.com>"]
+license = "GNU GENERAL PUBLIC LICENSE"
+readme = "README.md"
+packages = [{include = "espeak_phonemizer"}]
+repository = "https://github.com/mush42/espeak-phonemizer-windows"
+keywords = ["espeak", "phonemes", "ipa", "nlp"]
+classifiers = [
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Text Processing :: Linguistic",
+    "Development Status :: 5 - Production/Stable",
+    "Operating System :: Microsoft :: Windows"
+]
+
+
+[tool.poetry.dependencies]
+python = "^3.6"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.2.1"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
