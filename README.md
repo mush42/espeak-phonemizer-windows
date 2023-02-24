@@ -7,8 +7,6 @@ This is a fork of [espeak-phonemizer](https://github.com/rhasspy/espeak-phonemiz
 
 ## Installation
 
-Next, install espeak_phonemizer_windows:
-
 ```sh
 pip install espeak_phonemizer_windows
 ```
