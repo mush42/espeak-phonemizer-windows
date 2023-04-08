@@ -1,27 +1,25 @@
 # coding: utf-8
 
-
+import ctypes
 import os
 import sys
 import re
 import struct
-import subprocess
 import typing
 from pathlib import Path
 
 _DIR = Path(__file__).parent
 __version__ = (_DIR / "VERSION").read_text().strip()
-TEMPFILENAME = "espk_ph"
 ARCH = "x86" if struct.calcsize("P") == 4 else "x64"
-ESPEAK_NG_DIR = _DIR / "espeakng"
+ESPEAK_NG_DIR = _DIR / "espeak-ng"
 ESPEAK_DATA_PATH = ESPEAK_NG_DIR
-ESPEAK_NG_EXE = ESPEAK_NG_DIR / ARCH / "espeak-ng.exe"
-ZWNJ = bytes(chr(0x200C), "utf-8")
+ESPEAK_NG_DLL = ESPEAK_NG_DIR / f"espeak-ng-{ARCH}.dll"
+
 
 
 class Phonemizer:
     """
-    Use espeak-ng executable to get IPA phonemes from text.
+    Use espeak-ng shared library to get IPA phonemes from text.
     """
 
     LANG_SWITCH_FLAG = re.compile(r"\([^)]*\)")
@@ -36,6 +34,15 @@ class Phonemizer:
         self.current_voice: typing.Optional[str] = None
         self.default_voice = default_voice
         self.clause_breakers = clause_breakers or Phonemizer.DEFAULT_CLAUSE_BREAKERS
+        self.dll = ctypes.cdll.LoadLibrary(os.fspath(ESPEAK_NG_DLL.resolve()))
+        assert self.dll.espeak_Initialize(None, None, ctypes.c_char_p(os.fspath(ESPEAK_DATA_PATH.resolve()).encode("utf-8")), 7) == 22050
+        self.f_text_to_phonemes = self.dll.espeak_TextToPhonemes
+        self.f_text_to_phonemes.restype = ctypes.c_char_p
+        self.f_text_to_phonemes.argtypes = [
+            ctypes.POINTER(ctypes.c_char_p),
+            ctypes.c_int,
+            ctypes.c_int
+        ]
 
     def phonemize(
         self,
@@ -64,30 +71,29 @@ class Phonemizer:
         Returns:
             ipa - string of IPA phonemes
         """
-        cmd_args = [
-            "-q",
-            "--stdin",
-            "--ipa",
-            "-b=1",
-            '--sep="z"',
-            f'--path="{os.fspath(ESPEAK_DATA_PATH)}"',
-        ]
-
         voice = voice or self.default_voice
         if (voice is not None) and (voice != self.current_voice):
             self.current_voice = voice
-        cmd_args.append(f'-v "{self.current_voice}"')
+        assert self.dll.espeak_SetVoiceByName(ctypes.c_char_p(self.current_voice.encode("utf-8"))) == 0
 
         text += " "
         missing_breakers = []
         if keep_clause_breakers and self.clause_breakers:
             missing_breakers = [c for c in text if c in self.clause_breakers]
-        ph_output = self._call_espeakng(cmd_args, {"input": text.encode("utf-8")})
-        if phoneme_separator:
-            ph_output = ph_output.replace(ZWNJ, bytes(phoneme_separator, "utf-8"))
+
+        if phoneme_separator is None:
+            phoneme_mode = 0x02
         else:
-            ph_output = ph_output.replace(ZWNJ, b"")
-        phoneme_lines = ph_output.decode("utf-8").splitlines()
+            phoneme_mode = ord(phoneme_separator) << 8 | 0x02
+
+        text_ptr = ctypes.pointer(ctypes.c_char_p(text.encode("utf-8")))
+        result = []
+        while text_ptr.contents.value is not None:
+            phonemes = self.f_text_to_phonemes(text_ptr, 1, phoneme_mode)
+            if phonemes:
+                result.append(phonemes.decode("utf-8"))
+        
+        phoneme_lines = "\n".join(result).splitlines()
 
         if not keep_language_flags:
             # Remove language switching flags, e.g. (en)
