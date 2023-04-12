@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "espeak-phonemizer-windows"
-version = "1.0.2"
+version = "1.0.3"
 description = "Uses espeak-ng to transform text into IPA phonemes."
 authors = ["mush42 <ibnomer2011@hotmail.com>"]
 license = "GNU GENERAL PUBLIC LICENSE"

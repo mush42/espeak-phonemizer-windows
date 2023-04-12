@@ -15,6 +15,8 @@ ESPEAK_NG_DIR = _DIR / "espeak-ng"
 ESPEAK_DATA_PATH = ESPEAK_NG_DIR
 ESPEAK_NG_DLL = ESPEAK_NG_DIR / f"espeak-ng-{ARCH}.dll"
 
+ES_SAMPLE_RATE = 22050
+ES_OK = 0
 
 
 class Phonemizer:
@@ -35,7 +37,8 @@ class Phonemizer:
         self.default_voice = default_voice
         self.clause_breakers = clause_breakers or Phonemizer.DEFAULT_CLAUSE_BREAKERS
         self.dll = ctypes.cdll.LoadLibrary(os.fspath(ESPEAK_NG_DLL.resolve()))
-        assert self.dll.espeak_Initialize(None, None, ctypes.c_char_p(os.fspath(ESPEAK_DATA_PATH.resolve()).encode("utf-8")), 7) == 22050
+        if self.dll.espeak_Initialize(None, None, ctypes.c_char_p(os.fspath(ESPEAK_DATA_PATH.resolve()).encode("utf-8")), 7) != ES_SAMPLE_RATE:
+            raise RuntimeError("Could not initialize espeak-ng.")
         self.f_text_to_phonemes = self.dll.espeak_TextToPhonemes
         self.f_text_to_phonemes.restype = ctypes.c_char_p
         self.f_text_to_phonemes.argtypes = [
@@ -74,26 +77,27 @@ class Phonemizer:
         voice = voice or self.default_voice
         if (voice is not None) and (voice != self.current_voice):
             self.current_voice = voice
-        assert self.dll.espeak_SetVoiceByName(ctypes.c_char_p(self.current_voice.encode("utf-8"))) == 0
+        if self.dll.espeak_SetVoiceByName(ctypes.c_char_p(self.current_voice.encode("utf-8"))) != ES_OK:
+            raise RuntimeError(f"Could not set espeak-ng voice to `{self.current_voice}`")
 
         text += " "
         missing_breakers = []
         if keep_clause_breakers and self.clause_breakers:
             missing_breakers = [c for c in text if c in self.clause_breakers]
 
-        if phoneme_separator is None:
+        if not phoneme_separator:
             phoneme_mode = 0x02
         else:
+            if len(phoneme_separator) > 1:
+                raise ValueError("`phoneme_separator` should be a single character")
             phoneme_mode = ord(phoneme_separator) << 8 | 0x02
 
         text_ptr = ctypes.pointer(ctypes.c_char_p(text.encode("utf-8")))
-        result = []
+        phoneme_lines = []
         while text_ptr.contents.value is not None:
             phonemes = self.f_text_to_phonemes(text_ptr, 1, phoneme_mode)
             if phonemes:
-                result.append(phonemes.decode("utf-8"))
-        
-        phoneme_lines = "\n".join(result).splitlines()
+                phoneme_lines.append(phonemes.decode("utf-8"))
 
         if not keep_language_flags:
             # Remove language switching flags, e.g. (en)
@@ -127,19 +131,3 @@ class Phonemizer:
                 phonemes_str,
             )
         return phonemes_str
-
-    @staticmethod
-    def _call_espeakng(args, popen_kwargs=None):
-        popen_kwargs = popen_kwargs or {}
-        args = [os.fspath(ESPEAK_NG_EXE), *args]
-        startupinfo = subprocess.STARTUPINFO()
-        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-        ret = subprocess.run(
-            " ".join(args),
-            capture_output=True,
-            creationflags=subprocess.CREATE_NO_WINDOW,
-            startupinfo=startupinfo,
-            **popen_kwargs,
-        )
-        ret.check_returncode()
-        return ret.stdout
