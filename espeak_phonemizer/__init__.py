@@ -12,7 +12,7 @@ _DIR = Path(__file__).parent
 __version__ = (_DIR / "VERSION").read_text().strip()
 ARCH = "x86" if struct.calcsize("P") == 4 else "x64"
 ESPEAK_NG_DIR = _DIR / "espeak-ng"
-ESPEAK_DATA_PATH = ESPEAK_NG_DIR
+ESPEAK_NG_DATA_DIRECTORY = ESPEAK_NG_DIR
 ESPEAK_NG_DLL = ESPEAK_NG_DIR / f"espeak-ng-{ARCH}.dll"
 
 ES_SAMPLE_RATE = 22050
@@ -32,12 +32,15 @@ class Phonemizer:
         self,
         default_voice: typing.Optional[str] = None,
         clause_breakers: typing.Optional[typing.Collection[str]] = None,
+        *,
+        espeak_ng_data_directory=ESPEAK_NG_DATA_DIRECTORY,
+        espeak_ng_dll=ESPEAK_NG_DLL
     ):
         self.current_voice: typing.Optional[str] = None
         self.default_voice = default_voice
         self.clause_breakers = clause_breakers or Phonemizer.DEFAULT_CLAUSE_BREAKERS
-        self.dll = ctypes.cdll.LoadLibrary(os.fspath(ESPEAK_NG_DLL.resolve()))
-        if self.dll.espeak_Initialize(None, None, ctypes.c_char_p(os.fspath(ESPEAK_DATA_PATH.resolve()).encode("utf-8")), 7) != ES_SAMPLE_RATE:
+        self.dll = ctypes.cdll.LoadLibrary(os.fspath(espeak_ng_dll))
+        if self.dll.espeak_Initialize(None, None, ctypes.c_char_p(os.fspath(espeak_ng_data_directory).encode("utf-8")), 7) != ES_SAMPLE_RATE:
             raise RuntimeError("Could not initialize espeak-ng.")
         self.f_text_to_phonemes = self.dll.espeak_TextToPhonemes
         self.f_text_to_phonemes.restype = ctypes.c_char_p
